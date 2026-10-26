@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import * as d3 from "d3-geo";
+import { geoMiller } from "d3-geo-projection";
 
 const require = createRequire(import.meta.url);
 const OUT = new URL("../data/", import.meta.url);
@@ -33,7 +34,8 @@ const CONT = {
 const CONT_FIX = { CYP: "Europa", SYC: "Afryka", MUS: "Afryka", MDV: "Azja", SHN: "Afryka",
   IOT: "Azja", ATF: "Antarktyda", HMD: "Antarktyda", SGS: "Antarktyda" };
 
-const projection = d3.geoNaturalEarth1().fitWidth(W, { type: "Sphere" });
+// Płaska, prostokątna mapa (odwzorowanie walcowe Millera)
+const projection = geoMiller().fitWidth(W, { type: "Sphere" });
 const path = d3.geoPath(projection).digits(1);
 const H = Math.ceil(path.bounds({ type: "Sphere" })[1][1]);
 
@@ -113,10 +115,20 @@ const counted = countries.filter((c) => c.k).length;
 console.log("obiekty:", countries.length, "liczone kraje:", counted);
 if (counted !== 197) throw new Error("Oczekiwano 197 krajów, jest " + counted);
 
-const graticule = compact(path(d3.geoGraticule10()));
+const graticule = compact(path(d3.geoGraticule().step([30, 30]).extent([[-180, -90], [180, 90.01]])()));
 const sphere = compact(path({ type: "Sphere" }));
 countries.sort((a, b) => a.n.localeCompare(b.n, "pl"));
-fs.writeFileSync(new URL("world.json", OUT), JSON.stringify({ w: W, h: H, sphere, graticule, countries }));
+// Parametry odwzorowania — aplikacja przelicza nimi współrzędne geograficzne miast na punkty mapy
+const proj = { k: projection.scale(), tx: projection.translate()[0], ty: projection.translate()[1] };
+const millerJs = (lon, lat) => {
+  const l = lon * Math.PI / 180, f = lat * Math.PI / 180;
+  return [proj.tx + proj.k * l, proj.ty - proj.k * 1.25 * Math.log(Math.tan(Math.PI / 4 + 0.4 * f))];
+};
+for (const t of [[21, 52.2], [-74, 40.7], [151.2, -33.9]]) {
+  const a = projection(t), b = millerJs(...t);
+  if (Math.hypot(a[0] - b[0], a[1] - b[1]) > 0.01) throw new Error("Niezgodne odwzorowanie " + t);
+}
+fs.writeFileSync(new URL("world.json", OUT), JSON.stringify({ w: W, h: H, proj, sphere, graticule, countries }));
 
 // --- Miasta
 const isoToId = {};
@@ -137,15 +149,14 @@ for (const c of cities) {
   if (!(c.population >= 5000 || /^PPLC|^PPLA$/.test(c.featureCode))) continue;
   const id = isoToId[c.country];
   if (!id) { missing.add(c.country); continue; }
-  const xy = projection(c.loc.coordinates);
-  if (!xy) continue;
+  const [lon, lat] = c.loc.coordinates;
   const pl = plByGeonames[c.cityId] || "";
-  (byCountry[id] ||= []).push([c.name, pl, Math.round(xy[0] * 10) / 10, Math.round(xy[1] * 10) / 10,
+  (byCountry[id] ||= []).push([c.name, pl, +lon.toFixed(3), +lat.toFixed(3),
     c.population, c.featureCode === "PPLC" ? 1 : 0]);
   kept++;
 }
 for (const id in byCountry) byCountry[id].sort((a, b) => b[5] - a[5] || b[4] - a[4]);
-// Spłaszczenie do zwartego formatu: "nazwa|pl|x|y|pop" rozdzielone \n
+// Spłaszczenie do zwartego formatu: "nazwa|pl|lon|lat|pop" rozdzielone \n
 const compactCities = {};
 for (const id in byCountry) compactCities[id] = byCountry[id].map((r) => r.slice(0, 5).join("|")).join("\n");
 fs.writeFileSync(new URL("cities.json", OUT), JSON.stringify(compactCities));

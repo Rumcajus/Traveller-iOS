@@ -1,7 +1,7 @@
 /* Mapa Podróży — aplikacja działająca w 100% offline (PWA). */
 "use strict";
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 const STORE_KEY = "mapa-podrozy-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CONTINENTS = ["Europa", "Azja", "Afryka", "Ameryka Północna", "Ameryka Południowa", "Oceania"];
@@ -35,6 +35,52 @@ function save() {
   catch (e) { toast("Nie udało się zapisać danych"); }
 }
 
+/* ================= Odwzorowanie mapy ================= */
+// Mapa jest płaska (walcowe odwzorowanie Millera). Miasta trzymamy jako długość/szerokość geograficzną.
+const RAD = Math.PI / 180;
+function project(lon, lat) {
+  const p = world.proj;
+  return [p.tx + p.k * lon * RAD, p.ty - p.k * 1.25 * Math.log(Math.tan(Math.PI / 4 + 0.4 * lat * RAD))];
+}
+function unproject(x, y) {
+  const p = world.proj;
+  const lon = (x - p.tx) / p.k / RAD;
+  const lat = (2.5 * Math.atan(Math.exp(0.8 * (p.ty - y) / (p.k * 1.25))) - 0.625 * Math.PI) / RAD;
+  return [Math.max(-180, Math.min(180, lon)), Math.max(-90, Math.min(90, lat))];
+}
+
+// Wersja 1.0 zapisywała miasta jako punkty starej, zaokrąglonej mapy (Natural Earth, szer. 2000).
+// Przeliczamy je odwrotnym odwzorowaniem na współrzędne geograficzne.
+function naturalEarthInvert(x, y) {
+  const k = 365.5792881403361, tx = 1000, ty = 519.9965089081433;
+  const X = (x - tx) / k, Y = (ty - y) / k;
+  let phi = Y, i = 25, delta, phi2;
+  do {
+    phi2 = phi * phi;
+    const phi4 = phi2 * phi2;
+    phi -= delta = (phi * (1.007226 + phi2 * (0.015085 + phi4 * (-0.044475 + 0.028874 * phi2 - 0.005916 * phi4))) - Y) /
+      (1.007226 + phi2 * (0.015085 * 3 + phi4 * (-0.044475 * 7 + 0.028874 * 9 * phi2 - 0.005916 * 11 * phi4)));
+  } while (Math.abs(delta) > 1e-6 && --i > 0);
+  phi2 = phi * phi;
+  const lambda = X / (0.8707 + phi2 * (-0.131979 + phi2 * (-0.013791 + phi2 * phi2 * phi2 * (0.003971 - 0.001529 * phi2))));
+  return [lambda / RAD, phi / RAD];
+}
+function migrateCities() {
+  let changed = false;
+  for (const id in state.cities) {
+    for (const c of state.cities[id]) {
+      if (c.x != null && c.lon == null) {
+        const [lon, lat] = naturalEarthInvert(c.x, c.y);
+        c.lon = +lon.toFixed(3);
+        c.lat = +lat.toFixed(3);
+        changed = true;
+      }
+      if ("x" in c || "y" in c) { delete c.x; delete c.y; changed = true; }
+    }
+  }
+  return changed;
+}
+
 /* ================= Start ================= */
 async function init() {
   state = load();
@@ -45,6 +91,7 @@ async function init() {
 
   world = await fetch("data/world.json").then((r) => r.json());
   for (const c of world.countries) byId[c.id] = c;
+  if (migrateCities()) save();
   $("#badge-total").textContent = world.countries.filter((c) => c.k).length;
 
   buildMap();
@@ -53,6 +100,13 @@ async function init() {
   refreshAll();
 
   if ("serviceWorker" in navigator) {
+    // Po pobraniu nowej wersji aplikacji przeładuj raz, żeby od razu jej używać
+    if (navigator.serviceWorker.controller) {
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!reloaded) { reloaded = true; location.reload(); }
+      });
+    }
     navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then(() => {
       $("#offline-status").textContent = "gotowy ✓";
     }).catch(() => { $("#offline-status").textContent = "niedostępny"; });
@@ -300,12 +354,12 @@ let placing = null; // { id, idx } — tryb umieszczania własnego miasta na map
 function onMapTap(clientX, clientY) {
   if (placing) {
     const r = mapEl.getBoundingClientRect();
-    const [x, y] = toWorld(clientX - r.left, clientY - r.top);
+    const [lon, lat] = unproject(...toWorld(clientX - r.left, clientY - r.top));
     const list = state.cities[placing.id];
     const city = list && list[placing.idx];
     if (city) {
-      city.x = Math.round(x * 10) / 10;
-      city.y = Math.round(y * 10) / 10;
+      city.lon = +lon.toFixed(3);
+      city.lat = +lat.toFixed(3);
       save();
       renderCityDots();
       toast(`Umieszczono: ${city.n}`);
@@ -348,10 +402,11 @@ function renderCityDots() {
   const frag = document.createDocumentFragment();
   for (const id in state.cities) {
     for (const city of state.cities[id]) {
-      if (city.x == null) continue;
+      if (city.lon == null) continue;
+      const [x, y] = project(city.lon, city.lat);
       const d = document.createElementNS(SVG_NS, "circle");
-      d.setAttribute("cx", city.x);
-      d.setAttribute("cy", city.y);
+      d.setAttribute("cx", x);
+      d.setAttribute("cy", y);
       d.setAttribute("class", "cd");
       frag.appendChild(d);
     }
@@ -422,9 +477,9 @@ function citiesOf(id) {
   if (!citiesRaw) return [];
   const raw = citiesRaw[id];
   const arr = raw ? raw.split("\n").map((line) => {
-    const [n, pl, x, y, pop] = line.split("|");
+    const [n, pl, lon, lat, pop] = line.split("|");
     const show = pl || n;
-    return { n: show, alt: pl && pl !== n ? n : "", x: +x, y: +y, pop: +pop, key: norm(show) + " " + norm(n) };
+    return { n: show, alt: pl && pl !== n ? n : "", lon: +lon, lat: +lat, pop: +pop, key: norm(show) + " " + norm(n) };
   }) : [];
   return (citiesCache[id] = arr);
 }
@@ -524,7 +579,7 @@ function initUI() {
       city = { n: chip.dataset.custom, own: 1, t: Date.now() };
     } else {
       const c = citiesOf(sheetId)[+chip.dataset.i];
-      city = { n: c.n, x: c.x, y: c.y, t: Date.now() };
+      city = { n: c.n, lon: c.lon, lat: c.lat, t: Date.now() };
       if (c.alt) city.alt = c.alt;
     }
     if (addCity(sheetId, city)) {
@@ -743,8 +798,8 @@ function renderSheet() {
   const list = state.cities[c.id] || [];
   $("#city-count").textContent = list.length ? list.length : "";
   $("#city-list").innerHTML = list.map((city, i) => `<div class="city-row" data-i="${i}">
-      <span class="nm">${esc(city.n)}${city.alt ? `<small>${esc(city.alt)}</small>` : city.own && city.x == null ? `<small>nie ma go na mapie</small>` : ""}</span>
-      ${city.own && city.x == null ? `<button type="button" class="pin">Wskaż na mapie</button>` : ""}
+      <span class="nm">${esc(city.n)}${city.alt ? `<small>${esc(city.alt)}</small>` : city.own && city.lon == null ? `<small>nie ma go na mapie</small>` : ""}</span>
+      ${city.own && city.lon == null ? `<button type="button" class="pin">Wskaż na mapie</button>` : ""}
       <button type="button" class="del" aria-label="Usuń ${esc(city.n)}">✕</button>
     </div>`).join("");
   renderSuggest();
@@ -841,6 +896,7 @@ function importData(e) {
       state.visited = {}; state.cities = {};
       for (const id in d.visited) if (byId[id]) state.visited[id] = d.visited[id];
       for (const id in d.cities) if (byId[id] && Array.isArray(d.cities[id])) state.cities[id] = d.cities[id].filter((c) => c && c.n);
+      migrateCities();
       if (typeof d.color === "string" && /^#[0-9a-f]{6}$/i.test(d.color)) state.color = d.color;
       save();
       refreshAll();
