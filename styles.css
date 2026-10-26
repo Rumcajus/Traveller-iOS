@@ -88,7 +88,20 @@ input { font: inherit; color: inherit; }
 .sp-bubble { fill: #fff; stroke: #ff8fab; stroke-width: 1.2; vector-effect: non-scaling-stroke; filter: drop-shadow(0 2px 4px rgba(150, 0, 50, .25)); }
 .sp-text { fill: #c9184a; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 /* tryb „Miasta”: przygaszona mapa */
-[data-mode="cities"] #countries, [data-mode="cities"] #markers, [data-mode="cities"] .graticule { opacity: .5; }
+[data-mode="cities"] #countries, [data-mode="cities"] #markers, [data-mode="cities"] #detail, [data-mode="cities"] .graticule { opacity: .5; }
+/* plan Warszawy */
+#detail { pointer-events: none; }
+.dt-green { fill: #8cc47a; opacity: .45; }
+.dt-water { fill: #9fcbe0; fill-rule: evenodd; }
+.dt-wline { fill: none; stroke: #9fcbe0; stroke-width: 1.4px; vector-effect: non-scaling-stroke; }
+.dt-rail { fill: none; stroke: #8d8577; stroke-width: 1.2px; stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; }
+.dt-r0, .dt-r1, .dt-r2 { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.dt-r0 { stroke: #ffd98a; stroke-width: var(--r0); }
+.dt-r1 { stroke: #fff3cc; stroke-width: var(--r1); }
+.dt-r2 { stroke: #ffffff; stroke-width: var(--r2); opacity: .9; }
+.no-minor .dt-r2 { display: none; }
+.st { fill: #4a4a4a; paint-order: stroke; stroke: rgba(255, 255, 255, .9); stroke-linejoin: round; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.st0 { font-weight: 600; fill: #3a3326; }
 [data-mode="cities"] .lc { opacity: .45; }
 .mode-switch { position: absolute; right: 12px; top: calc(var(--sat) + 10px); display: flex; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 88%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: var(--shadow); }
 .mode-switch button { padding: 7px 14px; border-radius: 999px; font-size: 15px; font-weight: 600; color: var(--muted); }

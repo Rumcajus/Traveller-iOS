@@ -1,7 +1,7 @@
 /* Mapa Podróży — aplikacja działająca w 100% offline (PWA). */
 "use strict";
 
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 const STORE_KEY = "mapa-podrozy-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CONTINENTS = ["Europa", "Azja", "Afryka", "Ameryka Północna", "Ameryka Południowa", "Oceania"];
@@ -543,6 +543,85 @@ function renderOverlay() {
   }
   gDots.innerHTML = dots;
   gLbl.innerHTML = lbl;
+  updateDetail(unit, boxes, sx, sy);
+}
+
+/* ---------- szczegółowa mapa Warszawy (ulice, woda, zieleń) ---------- */
+const DETAIL_BBOX = [20.84, 52.09, 21.28, 52.37];
+const DETAIL_MIN_UNIT = 60;      // od tego przybliżenia widać plan miasta
+const MINOR_ROADS_UNIT = 160;    // ulice osiedlowe
+const STREET_NAMES_UNIT = 650;   // nazwy ulic
+let detail = null, detailLoading = false;
+
+function loadDetail() {
+  if (detail || detailLoading) return;
+  detailLoading = true;
+  fetch("data/warsaw.json").then((r) => r.json()).then((d) => {
+    detail = d;
+    const parts = [[], [], []];
+    for (const r of d.roads) parts[r[0]].push(r[2]);
+    const g = $("#detail");
+    g.setAttribute("transform", `translate(${d.x0} ${d.y0}) scale(${d.unit})`);
+    g.innerHTML = `<path class="dt-green" d="${d.green}"/><path class="dt-water" d="${d.water}"/>` +
+      `<path class="dt-wline" d="${d.waterLines}"/><path class="dt-rail" d="${d.rail}"/>` +
+      `<path class="dt-r2" d="${parts[2].join("")}"/><path class="dt-r1" d="${parts[1].join("")}"/>` +
+      `<path class="dt-r0" d="${parts[0].join("")}"/><defs id="street-defs"></defs><g id="street-labels"></g>`;
+    renderOverlay();
+  }).catch(() => { detailLoading = false; });
+}
+
+function updateDetail(unit, boxes, sx, sy) {
+  const g = $("#detail");
+  const [ax, ay] = project(DETAIL_BBOX[0], DETAIL_BBOX[3]), [bx, by] = project(DETAIL_BBOX[2], DETAIL_BBOX[1]);
+  const visible = unit >= DETAIL_MIN_UNIT && bx > vb.x && ax < vb.x + vb.w && by > vb.y && ay < vb.y + vb.h;
+  g.style.display = visible ? "" : "none";
+  if (!visible) return;
+  if (!detail) { loadDetail(); return; }
+  // grubość ulic rośnie z przybliżeniem (w pikselach ekranu)
+  const w = (k, min, max) => Math.min(max, Math.max(min, unit * k)).toFixed(2) + "px";
+  g.style.setProperty("--r0", w(0.0034, 1.1, 9));
+  g.style.setProperty("--r1", w(0.0026, 0.8, 7));
+  g.style.setProperty("--r2", w(0.0019, 0.5, 5));
+  g.classList.toggle("no-minor", unit < MINOR_ROADS_UNIT);
+
+  // nazwy ulic wzdłuż ulic; pierwszeństwo mają główne i dłuższe odcinki
+  let defs = "", labels = "";
+  if (unit >= STREET_NAMES_UNIT) {
+    const u = detail.unit, x0 = detail.x0, y0 = detail.y0, pxPerLocal = unit * u;
+    const cand = [];
+    for (let i = 0; i < detail.roads.length; i++) {
+      const r = detail.roads[i];
+      if (r[1] < 0 || (r[0] === 2 && unit < MINOR_ROADS_UNIT)) continue;
+      const a0 = sx(x0 + r[3] * u), b0 = sy(y0 + r[4] * u), a1 = sx(x0 + r[5] * u), b1 = sy(y0 + r[6] * u);
+      if (a1 < 0 || a0 > cw || b1 < 0 || b0 > ch) continue;
+      cand.push({ i, r, a0, b0, a1, b1, len: r[7] * pxPerLocal });
+    }
+    cand.sort((p, q) => p.r[0] - q.r[0] || q.len - p.len);
+    const done = new Map(); // nazwa -> środki już podpisanych odcinków
+    let n = 0;
+    for (const c of cand) {
+      const name = detail.names[c.r[1]], fs = c.r[0] === 0 ? 12 : 11;
+      const tw = name.length * fs * 0.56 + 8;
+      if (c.len < tw + 16) continue;
+      const cx = (c.a0 + c.a1) / 2, cy = (c.b0 + c.b1) / 2;
+      // środek napisu musi być na ekranie
+      if (cx < 20 || cx > cw - 20 || cy < 20 || cy > ch - 20) continue;
+      const prev = done.get(name) || [];
+      if (prev.some(([x, y]) => Math.hypot(x - cx, y - cy) < 260)) continue;
+      const bw = Math.min(tw, c.a1 - c.a0) + fs, bh = Math.min(tw, c.b1 - c.b0) + fs;
+      const box = [cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2];
+      if (boxes.some((o) => box[0] < o[2] && box[2] > o[0] && box[1] < o[3] && box[3] > o[1])) continue;
+      boxes.push(box);
+      prev.push([cx, cy]); done.set(name, prev);
+      const k = 1 / pxPerLocal;
+      defs += `<path id="sl${c.i}" d="${c.r[2]}"/>`;
+      labels += `<text class="st${c.r[0] === 0 ? " st0" : ""}" font-size="${fs * k}" stroke-width="${3 * k}" dy="${0.35 * fs * k}">` +
+        `<textPath href="#sl${c.i}" startOffset="50%" text-anchor="middle">${esc(name)}</textPath></text>`;
+      if (++n >= 80) break;
+    }
+  }
+  $("#street-defs").innerHTML = defs;
+  $("#street-labels").innerHTML = labels;
 }
 
 function setMapMode(mode) {

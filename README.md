@@ -46,3 +46,5 @@ Aplikacja pobierze nową wersję przy najbliższym uruchomieniu z dostępem do i
 
 ## Źródła danych
 Granice państw: Natural Earth (domena publiczna). Miasta: GeoNames (CC BY 4.0), przez pakiet `all-the-cities`.
+Plan Warszawy (ulice, woda, zieleń): © współtwórcy OpenStreetMap, licencja ODbL, pobrane z Overture Maps
+(`tools/overture_fetch.py` pobiera dane, `tools/warsaw_build.py` buduje `data/warsaw.json`).
