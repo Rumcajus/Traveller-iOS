@@ -27,6 +27,7 @@
           <g id="countries"></g>
           <g id="markers"></g>
           <g id="city-dots"></g>
+          <g id="labels"></g>
         </svg>
       </div>
       <button id="map-badge" class="map-badge" type="button" aria-label="Pokaż statystyki">
@@ -89,13 +90,24 @@
         <div class="group-title">Mapa</div>
         <div class="card">
           <label class="row switch-row">
-            <span>Pokazuj miasta na mapie</span>
+            <span>Pokazuj miasta i ich nazwy</span>
             <input type="checkbox" id="opt-cities" class="switch">
+          </label>
+          <label class="row switch-row">
+            <span>Pokazuj nazwy krajów</span>
+            <input type="checkbox" id="opt-labels" class="switch">
           </label>
           <label class="row switch-row">
             <span>Pokazuj siatkę południków</span>
             <input type="checkbox" id="opt-grid" class="switch">
           </label>
+        </div>
+
+        <div class="legend">
+          <span><i class="lg-dot"></i>miasto</span>
+          <span><i class="lg-dot v"></i>odwiedzone</span>
+          <span><i class="lg-dot cap"></i>stolica</span>
+          <span><i class="lg-dot cap v"></i>odwiedzona stolica</span>
         </div>
 
         <div class="group-title">Kopia zapasowa</div>

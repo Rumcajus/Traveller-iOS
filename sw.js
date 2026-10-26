@@ -1,5 +1,5 @@
 /* Service worker: wszystkie pliki trafiają do pamięci podręcznej przy instalacji — potem aplikacja działa bez internetu. */
-const CACHE = "mapa-podrozy-1.1.0";
+const CACHE = "mapa-podrozy-1.2.0";
 const ASSETS = [
   "./",
   "index.html",
@@ -8,6 +8,7 @@ const ASSETS = [
   "manifest.webmanifest",
   "data/world.json",
   "data/cities.json",
+  "data/places.json",
   "icons/icon-180.png",
   "icons/icon-192.png",
   "icons/icon-512.png",

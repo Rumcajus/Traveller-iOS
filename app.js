@@ -1,7 +1,7 @@
 /* Mapa Podróży — aplikacja działająca w 100% offline (PWA). */
 "use strict";
 
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 const STORE_KEY = "mapa-podrozy-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CONTINENTS = ["Europa", "Azja", "Afryka", "Ameryka Północna", "Ameryka Południowa", "Oceania"];
@@ -21,7 +21,7 @@ const citiesCache = {};
 
 /* ================= Zapis danych ================= */
 function defaultState() {
-  return { visited: {}, cities: {}, color: COLORS[0], showCities: true, showGrid: true, tipClosed: false };
+  return { visited: {}, cities: {}, color: COLORS[0], showCities: true, showGrid: true, showLabels: true, tipClosed: false };
 }
 function load() {
   try {
@@ -89,8 +89,17 @@ async function init() {
   document.body.classList.toggle("no-grid", !state.showGrid);
   $("#app-version").textContent = VERSION;
 
-  world = await fetch("data/world.json").then((r) => r.json());
+  const [w, pl] = await Promise.all([
+    fetch("data/world.json").then((r) => r.json()),
+    fetch("data/places.json").then((r) => r.json()).catch(() => []),
+  ]);
+  world = w;
   for (const c of world.countries) byId[c.id] = c;
+  places = pl.map(([n, id, lon, lat, pop, cap]) => {
+    const [x, y] = project(lon, lat);
+    return { n, id, x, y, pop, cap, key: id + "|" + norm(n) };
+  });
+  labelOrder = world.countries.filter((c) => c.l).sort((a, b) => b.ar - a.ar);
   if (migrateCities()) save();
   $("#badge-total").textContent = world.countries.filter((c) => c.k).length;
 
@@ -199,6 +208,7 @@ function setView(v, commit) {
     svg.setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`);
     svg.style.transform = "";
     updateRadii();
+    renderOverlay();
   } else {
     const k = vb0.w / v.w;
     const tx = (vb0.x - v.x) * cw / v.w, ty = (vb0.y - v.y) * ch / v.h;
@@ -215,7 +225,6 @@ function scheduleCommit(delay = 120) {
 function updateRadii() {
   const unit = vb.w / cw; // jednostki mapy na 1 px
   for (const c of world.countries) if (c.mk) c.mk.setAttribute("r", 4.5 * unit);
-  for (const d of $("#city-dots").children) d.setAttribute("r", 3.6 * unit);
 }
 
 function toWorld(px, py) {
@@ -361,7 +370,7 @@ function onMapTap(clientX, clientY) {
       city.lon = +lon.toFixed(3);
       city.lat = +lat.toFixed(3);
       save();
-      renderCityDots();
+      renderOverlay();
       toast(`Umieszczono: ${city.n}`);
     }
     const id = placing.id;
@@ -396,23 +405,101 @@ function paintCountry(c) {
   if (c.mk) c.mk.classList.toggle("v", v);
 }
 
-function renderCityDots() {
-  const g = $("#city-dots");
-  g.textContent = "";
-  const frag = document.createDocumentFragment();
-  for (const id in state.cities) {
-    for (const city of state.cities[id]) {
-      if (city.lon == null) continue;
-      const [x, y] = project(city.lon, city.lat);
-      const d = document.createElementNS(SVG_NS, "circle");
-      d.setAttribute("cx", x);
-      d.setAttribute("cy", y);
-      d.setAttribute("class", "cd");
-      frag.appendChild(d);
+/* ---------- miasta i nazwy na mapie ---------- */
+let places = [];     // duże miasta i stolice {n, id, x, y, pop, cap, key}
+let labelOrder = []; // kraje z etykietą, od największych
+
+// Ile miast pokazywać przy danym przybliżeniu (unit = piksele ekranu na jednostkę mapy)
+function minPopFor(unit) {
+  if (unit < 0.6) return 5e6;
+  if (unit < 0.9) return 2e6;
+  if (unit < 1.2) return 1e6;
+  if (unit < 2.5) return 3e5;
+  if (unit < 5) return 1.5e5;
+  return 0;
+}
+
+function renderOverlay() {
+  if (!vb) return;
+  const gDots = $("#city-dots"), gLbl = $("#labels");
+  const unit = cw / vb.w, inv = 1 / unit;
+  const pad = 30;
+  const sx = (x) => (x - vb.x) * unit, sy = (y) => (y - vb.y) * unit;
+  const inView = (x, y) => { const a = sx(x), b = sy(y); return a > -pad && a < cw + pad && b > -pad && b < ch + pad; };
+  const boxes = [];
+  const free = (b) => {
+    for (const o of boxes) if (b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]) return false;
+    return true;
+  };
+  let lbl = "", dots = "";
+  const text = (x, y, t, cls, fs, anchor) =>
+    `<text x="${x}" y="${y}" class="${cls}" font-size="${fs * inv}" stroke-width="${3 * inv}"${anchor ? ` text-anchor="${anchor}"` : ""}>${esc(t)}</text>`;
+
+  // 1. Nazwy krajów (najpierw największe)
+  if (state.showLabels) {
+    for (const c of labelOrder) {
+      const [x, y, minUnit, fs] = c.l;
+      if (unit < minUnit || !inView(x, y)) continue;
+      const name = c.n.toUpperCase();
+      const w = name.length * fs * 0.68 + 4, a = sx(x), b = sy(y);
+      const box = [a - w / 2, b - fs * 0.7, a + w / 2, b + fs * 0.7];
+      if (!free(box)) continue;
+      boxes.push(box);
+      lbl += text(x, y + fs * 0.35 * inv, name, "lc", fs, "middle");
     }
   }
-  g.appendChild(frag);
-  updateRadii();
+
+  // 2. Miasta: odwiedzone zawsze, pozostałe zależnie od przybliżenia (stolice mają pierwszeństwo)
+  if (state.showCities) {
+    const visitedKeys = new Map();
+    for (const id in state.cities) {
+      for (const c of state.cities[id]) if (c.lon != null) visitedKeys.set(id + "|" + norm(c.n), c);
+    }
+    const minPop = minPopFor(unit);
+    const cand = [];
+    for (const p of places) {
+      const v = visitedKeys.has(p.key);
+      if (!v && (!p.cap || unit < 0.6) && p.pop < minPop) continue;
+      if (!inView(p.x, p.y)) continue;
+      cand.push({ n: p.n, x: p.x, y: p.y, pop: p.pop, cap: p.cap, v });
+      if (v) visitedKeys.delete(p.key);
+    }
+    for (const c of visitedKeys.values()) { // własne miejsca i mniejsze miasta z listy użytkownika
+      const [x, y] = project(c.lon, c.lat);
+      if (inView(x, y)) cand.push({ n: c.n, x, y, pop: 0, cap: 0, v: true });
+    }
+    cand.sort((a, b) => b.v - a.v || b.cap - a.cap || b.pop - a.pop);
+
+    const showNames = unit >= 0.7;
+    const placed = [];
+    const dotBoxes = [];
+    for (const c of cand) {
+      const a = sx(c.x), b = sy(c.y), r = c.cap ? 4.5 : 3.5;
+      const gap = unit < 1 ? 7 : unit < 3 ? 4 : 1; // przy oddaleniu większe odstępy między kropkami
+      const db = [a - r - gap, b - r - gap, a + r + gap, b + r + gap];
+      // nienakładające się kropki; odwiedzone rysujemy zawsze
+      if (!c.v && dotBoxes.some((o) => db[0] < o[2] && db[2] > o[0] && db[1] < o[3] && db[3] > o[1])) continue;
+      dotBoxes.push(db);
+      placed.push(c);
+      dots += `<circle cx="${c.x}" cy="${c.y}" r="${r * inv}" class="pd${c.v ? " v" : ""}${c.cap ? " cap" : ""}"/>`;
+    }
+    // 3. Nazwy miast — po prawej, a gdy brak miejsca, po lewej stronie kropki
+    if (showNames) {
+      for (const c of placed) {
+        const big = c.cap || c.v || c.pop >= 1e6;
+        if (!big && unit < 1.5) continue;
+        const fs = c.cap ? 12 : 11;
+        const w = c.n.length * fs * 0.56 + 2, a = sx(c.x), b = sy(c.y);
+        const right = [a + 6, b - fs * 0.6, a + 6 + w, b + fs * 0.6];
+        const left = [a - 6 - w, b - fs * 0.6, a - 6, b + fs * 0.6];
+        const cls = "lp" + (c.cap ? " cap" : "") + (c.v ? " v" : "");
+        if (free(right)) { boxes.push(right); lbl += text(c.x + 6 * inv, c.y + fs * 0.35 * inv, c.n, cls, fs); }
+        else if (free(left)) { boxes.push(left); lbl += text(c.x - 6 * inv, c.y + fs * 0.35 * inv, c.n, cls, fs, "end"); }
+      }
+    }
+  }
+  gDots.innerHTML = dots;
+  gLbl.innerHTML = lbl;
 }
 
 function selectCountry(id) {
@@ -438,7 +525,7 @@ function setVisited(id, on) {
   }
   save();
   paintCountry(byId[id]);
-  if (!on) renderCityDots();
+  if (!on) renderOverlay();
   refreshCounters();
 }
 
@@ -450,7 +537,7 @@ function addCity(id, city) {
   if (!wasVisited) state.visited[id] = Date.now();
   save();
   paintCountry(byId[id]);
-  renderCityDots();
+  renderOverlay();
   refreshCounters();
   toast(wasVisited ? `Dodano: ${city.n}` : `Dodano: ${city.n} · ${byId[id].n} odwiedzony`);
   return true;
@@ -462,7 +549,7 @@ function removeCity(id, idx) {
   const [c] = list.splice(idx, 1);
   if (!list.length) delete state.cities[id];
   save();
-  renderCityDots();
+  renderOverlay();
   refreshCounters();
   toast(`Usunięto: ${c.n}`);
 }
@@ -526,7 +613,10 @@ function initUI() {
   $("#opt-cities").addEventListener("change", (e) => {
     state.showCities = e.target.checked; save();
     document.body.classList.toggle("no-cities", !state.showCities);
+    renderOverlay();
   });
+  $("#opt-labels").checked = state.showLabels;
+  $("#opt-labels").addEventListener("change", (e) => { state.showLabels = e.target.checked; save(); renderOverlay(); });
   $("#opt-grid").checked = state.showGrid;
   $("#opt-grid").addEventListener("change", (e) => {
     state.showGrid = e.target.checked; save();
@@ -537,7 +627,7 @@ function initUI() {
   $("#file-import").addEventListener("change", importData);
   $("#btn-reset").addEventListener("click", () => {
     if (!confirm("Na pewno usunąć wszystkie odwiedzone kraje i miasta? Tej operacji nie można cofnąć.")) return;
-    const keep = { color: state.color, showCities: state.showCities, showGrid: state.showGrid, tipClosed: state.tipClosed };
+    const keep = { color: state.color, showCities: state.showCities, showGrid: state.showGrid, showLabels: state.showLabels, tipClosed: state.tipClosed };
     state = Object.assign(defaultState(), keep);
     save();
     refreshAll();
@@ -624,11 +714,12 @@ function showView(name) {
 
 function refreshAll() {
   for (const c of world.countries) paintCountry(c);
-  renderCityDots();
+  renderOverlay();
   refreshCounters();
   renderSwatches();
   $("#opt-cities").checked = state.showCities;
   $("#opt-grid").checked = state.showGrid;
+  $("#opt-labels").checked = state.showLabels;
   document.body.classList.toggle("no-cities", !state.showCities);
   document.body.classList.toggle("no-grid", !state.showGrid);
   applyColor();

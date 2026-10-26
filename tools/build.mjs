@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import * as d3 from "d3-geo";
 import { geoMiller } from "d3-geo-projection";
+import polylabel from "polylabel";
 
 const require = createRequire(import.meta.url);
 const OUT = new URL("../data/", import.meta.url);
@@ -87,6 +88,15 @@ for (const f of ne.features) {
     x0 = Math.min(x0, a); y0 = Math.min(y0, b); x1 = Math.max(x1, c); y1 = Math.max(y1, e);
   }
   const [mx, my] = path.centroid(parts[0].g);
+  // Etykieta: punkt najdalej od brzegów największej części kraju; minimalne przybliżenie, przy którym napis się mieści
+  const rings = parts[0].g.coordinates.map((r) => r.map((pt) => projection(pt)));
+  const lp = polylabel(rings, 0.5);
+  const name = NAME_FIX[id] || p.NAME_PL || p.NAME;
+  const fs = area > 0.004 ? 12 : 10.5;
+  const textW = name.length * fs * 0.68 + 4;
+  const [[bx0], [bx1]] = path.bounds(parts[0].g);
+  const avail = Math.max(2.6 * lp.distance, Math.min(0.75 * (bx1 - bx0), 4.5 * lp.distance)); // napis może lekko wystawać
+  const minUnit = Math.min(12, Math.max(textW / Math.max(avail, 0.05), fs * 0.8 / Math.max(2 * lp.distance, 0.05)));
   const projArea = path.area(f);
 
   countries.push({
@@ -100,6 +110,7 @@ for (const f of ne.features) {
     b: [x0, y0, x1, y1].map((v) => Math.round(v * 10) / 10),
     m: counted && projArea < 6 ? [Math.round(mx * 10) / 10, Math.round(my * 10) / 10] : undefined,
     s: counted ? undefined : p.SOVEREIGNT, // zamieniane niżej na id państwa
+    l: [Math.round(lp[0] * 10) / 10, Math.round(lp[1] * 10) / 10, +minUnit.toFixed(3), fs],
     d,
   });
 }
@@ -155,10 +166,24 @@ for (const c of cities) {
     c.population, c.featureCode === "PPLC" ? 1 : 0]);
   kept++;
 }
+// Duże miasta i stolice pokazywane na mapie (bez dzielnic: pomijamy punkt < 7 km od większego miasta lub < 15 km od miasta milionowego)
+const big = cities.filter((c) => isoToId[c.country] && ((c.population >= 100000 && c.featureCode !== "PPLX") || c.featureCode === "PPLC"))
+  .sort((a, b) => (b.featureCode === "PPLC") - (a.featureCode === "PPLC") || b.population - a.population);
+const kept2 = [];
+const km = (a, b) => d3.geoDistance(a.loc.coordinates, b.loc.coordinates) * 6371;
+for (const c of big) {
+  if (c.featureCode !== "PPLC" && kept2.some((k) => { const d = km(k, c); return d < 7 || (d < 15 && k.population >= 1e6); })) continue;
+  kept2.push(c);
+}
+const placesOut = kept2.map((c) => [plByGeonames[c.cityId] || c.name, isoToId[c.country],
+  +c.loc.coordinates[0].toFixed(3), +c.loc.coordinates[1].toFixed(3), c.population, c.featureCode === "PPLC" ? 1 : 0]);
+fs.writeFileSync(new URL("places.json", OUT), JSON.stringify(placesOut));
+console.log("miasta na mapie:", placesOut.length, "stolice:", placesOut.filter((p) => p[5]).length);
+
 for (const id in byCountry) byCountry[id].sort((a, b) => b[5] - a[5] || b[4] - a[4]);
 // Spłaszczenie do zwartego formatu: "nazwa|pl|lon|lat|pop" rozdzielone \n
 const compactCities = {};
 for (const id in byCountry) compactCities[id] = byCountry[id].map((r) => r.slice(0, 5).join("|")).join("\n");
 fs.writeFileSync(new URL("cities.json", OUT), JSON.stringify(compactCities));
 console.log("miasta:", kept, "pominięte kody:", [...missing].join(" ") || "-");
-for (const f of ["world.json", "cities.json"]) console.log(f, (fs.statSync(new URL(f, OUT)).size / 1024).toFixed(0), "KB");
+for (const f of ["world.json", "cities.json", "places.json"]) console.log(f, (fs.statSync(new URL(f, OUT)).size / 1024).toFixed(0), "KB");
