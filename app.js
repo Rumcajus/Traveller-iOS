@@ -1,7 +1,7 @@
 /* Mapa Podróży — aplikacja działająca w 100% offline (PWA). */
 "use strict";
 
-const VERSION = "1.3.1";
+const VERSION = "1.3.2";
 const STORE_KEY = "mapa-podrozy-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CONTINENTS = ["Europa", "Azja", "Afryka", "Ameryka Północna", "Ameryka Południowa", "Oceania"];
@@ -1042,12 +1042,12 @@ function toast(msg) {
 }
 
 /* ---------- niespodzianka ---------- */
-// 12 szybkich stuknięć w numer wersji (każde najwyżej 0,6 s po poprzednim)
+// 12 szybkich stuknięć w numer wersji (każde najwyżej 0,8 s po poprzednim)
 (() => {
   let taps = 0, last = 0;
   $("#version-row").addEventListener("click", () => {
     const now = performance.now();
-    taps = now - last < 600 ? taps + 1 : 1;
+    taps = now - last < 800 ? taps + 1 : 1;
     last = now;
     if (taps >= 12) { taps = 0; showHearts(); }
   });

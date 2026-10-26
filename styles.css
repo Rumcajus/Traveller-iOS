@@ -38,7 +38,7 @@
   }
 }
 
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; } /* bez powiększania podwójnym stuknięciem */
 html, body {
   margin: 0; height: 100%; overflow: hidden;
   background: var(--bg); color: var(--text);
@@ -257,7 +257,7 @@ input { font: inherit; color: inherit; }
 .placing .toast { bottom: calc(var(--tabbar-h) + var(--sab) + 96px); }
 
 /* ---------- niespodzianka: serduszka ---------- */
-#version-row { touch-action: manipulation; user-select: none; -webkit-user-select: none; cursor: default; }
+#version-row { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: default; }
 .hearts { position: fixed; inset: 0; z-index: 100; overflow: hidden; background: rgba(255, 228, 236, .55); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); animation: hearts-in .4s ease both; }
 .hearts.out { animation: hearts-out .5s ease both; }
 .fh { position: absolute; bottom: -60px; opacity: 0; animation: heart-rise var(--d) ease-in var(--delay) infinite; filter: drop-shadow(0 2px 4px rgba(200, 0, 60, .25)); }
