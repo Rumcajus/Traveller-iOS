@@ -1,7 +1,7 @@
 /* Mapa Podróży — aplikacja działająca w 100% offline (PWA). */
 "use strict";
 
-const VERSION = "1.3.0";
+const VERSION = "1.3.1";
 const STORE_KEY = "mapa-podrozy-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CONTINENTS = ["Europa", "Azja", "Afryka", "Ameryka Północna", "Ameryka Południowa", "Oceania"];
@@ -1039,6 +1039,46 @@ function toast(msg) {
   requestAnimationFrame(() => t.classList.add("show"));
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.classList.remove("show"); setTimeout(() => { if (!t.classList.contains("show")) t.hidden = true; }, 250); }, 2200);
+}
+
+/* ---------- niespodzianka ---------- */
+// 12 szybkich stuknięć w numer wersji (każde najwyżej 0,6 s po poprzednim)
+(() => {
+  let taps = 0, last = 0;
+  $("#version-row").addEventListener("click", () => {
+    const now = performance.now();
+    taps = now - last < 600 ? taps + 1 : 1;
+    last = now;
+    if (taps >= 12) { taps = 0; showHearts(); }
+  });
+})();
+
+function showHearts() {
+  if ($("#hearts")) return;
+  const HEART = "M12 21.3 10.6 20C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.6 11.5L12 21.3Z";
+  const colors = ["#ff4d6d", "#ff758f", "#ff8fa3", "#e63946", "#f72585", "#ffb3c1", "#c9184a"];
+  const box = document.createElement("div");
+  box.id = "hearts";
+  box.className = "hearts";
+  let html = "";
+  for (let i = 0; i < 46; i++) {
+    const size = 16 + Math.random() * 34;
+    html += `<svg class="fh" viewBox="0 0 24 24" style="left:${Math.random() * 100}%;width:${size}px;height:${size}px;` +
+      `--d:${3.5 + Math.random() * 3.5}s;--delay:${(Math.random() * 2.5).toFixed(2)}s;--sway:${(Math.random() * 60 - 30).toFixed(0)}px;` +
+      `--rot:${(Math.random() * 50 - 25).toFixed(0)}deg;fill:${colors[i % colors.length]}"><path d="${HEART}"/></svg>`;
+  }
+  html += `<div class="big-heart"><svg viewBox="0 0 24 24"><defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1">` +
+    `<stop offset="0" stop-color="#ff758f"/><stop offset="1" stop-color="#d00045"/></linearGradient></defs>` +
+    `<path d="${HEART}" fill="url(#hg)"/></svg><span>G+D</span></div>`;
+  box.innerHTML = html;
+  document.body.appendChild(box);
+  if (navigator.vibrate) navigator.vibrate([30, 60, 30]);
+  const close = () => {
+    box.classList.add("out");
+    setTimeout(() => box.remove(), 500);
+  };
+  box.addEventListener("click", close);
+  setTimeout(close, 7000);
 }
 
 init().catch((e) => {
