@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Mapa Podróży</title>
+  <meta name="description" content="Zaznaczaj odwiedzone kraje i miasta na mapie świata — działa offline.">
+  <meta name="theme-color" content="#f6f1e7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14202c" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Podróże">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- MAPA -->
+    <section id="view-map" class="view active" aria-label="Mapa">
+      <div id="map" class="map">
+        <svg id="svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mapa świata">
+          <path id="sphere" class="sphere"/>
+          <path id="graticule" class="graticule"/>
+          <g id="countries"></g>
+          <g id="markers"></g>
+          <g id="city-dots"></g>
+        </svg>
+      </div>
+      <button id="map-badge" class="map-badge" type="button" aria-label="Pokaż statystyki">
+        <span class="badge-num"><b id="badge-visited">0</b><span>/<span id="badge-total">197</span></span></span>
+        <span class="badge-label">krajów</span>
+        <span class="badge-pct" id="badge-pct">0%</span>
+      </button>
+      <div class="zoom-ctrl">
+        <button type="button" id="zoom-in" aria-label="Przybliż">+</button>
+        <button type="button" id="zoom-out" aria-label="Oddal">−</button>
+        <button type="button" id="zoom-reset" aria-label="Cały świat">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/></svg>
+        </button>
+      </div>
+      <div id="place-banner" class="place-banner" hidden>
+        <span>Dotknij mapy, aby umieścić <b id="place-name"></b></span>
+        <button type="button" id="place-cancel">Anuluj</button>
+      </div>
+      <div id="install-tip" class="install-tip" hidden>
+        <div>
+          <b>Zainstaluj aplikację</b>
+          <span>W Safari stuknij <span class="share-ico" aria-hidden="true"></span> <i>Udostępnij</i>, a potem <i>Do ekranu początkowego</i>. Dane zapisane w Safari nie przenoszą się do zainstalowanej aplikacji — zainstaluj ją przed zaznaczaniem krajów.</span>
+        </div>
+        <button type="button" id="install-close" aria-label="Zamknij">✕</button>
+      </div>
+    </section>
+
+    <!-- KRAJE -->
+    <section id="view-list" class="view" aria-label="Kraje">
+      <header class="view-head">
+        <h1>Kraje</h1>
+        <div class="search">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="list-search" type="search" placeholder="Szukaj kraju" autocomplete="off" autocorrect="off" spellcheck="false">
+        </div>
+        <div class="segmented" id="list-filter" role="tablist">
+          <button type="button" data-f="all" class="on">Wszystkie</button>
+          <button type="button" data-f="v">Odwiedzone</button>
+          <button type="button" data-f="n">Nieodwiedzone</button>
+        </div>
+      </header>
+      <div class="scroll" id="list-body"></div>
+    </section>
+
+    <!-- STATYSTYKI -->
+    <section id="view-stats" class="view" aria-label="Statystyki">
+      <header class="view-head"><h1>Statystyki</h1></header>
+      <div class="scroll" id="stats-body"></div>
+    </section>
+
+    <!-- USTAWIENIA -->
+    <section id="view-settings" class="view" aria-label="Ustawienia">
+      <header class="view-head"><h1>Ustawienia</h1></header>
+      <div class="scroll">
+        <div class="group-title">Kolor odwiedzonych krajów</div>
+        <div class="card">
+          <div class="swatches" id="swatches"></div>
+        </div>
+
+        <div class="group-title">Mapa</div>
+        <div class="card">
+          <label class="row switch-row">
+            <span>Pokazuj miasta na mapie</span>
+            <input type="checkbox" id="opt-cities" class="switch">
+          </label>
+          <label class="row switch-row">
+            <span>Pokazuj siatkę południków</span>
+            <input type="checkbox" id="opt-grid" class="switch">
+          </label>
+        </div>
+
+        <div class="group-title">Kopia zapasowa</div>
+        <div class="card">
+          <button type="button" class="row btn-row" id="btn-export">Eksportuj dane (plik .json)</button>
+          <button type="button" class="row btn-row" id="btn-import">Importuj dane z pliku</button>
+          <input type="file" id="file-import" accept="application/json,.json" hidden>
+        </div>
+        <p class="hint">Dane są zapisywane tylko na tym urządzeniu. Raz na jakiś czas zrób kopię i zapisz ją w aplikacji Pliki lub iCloud.</p>
+
+        <div class="card">
+          <button type="button" class="row btn-row danger" id="btn-reset">Usuń wszystkie dane</button>
+        </div>
+
+        <div class="group-title">O aplikacji</div>
+        <div class="card about">
+          <div class="row"><span>Tryb offline</span><span id="offline-status" class="muted">sprawdzam…</span></div>
+          <div class="row"><span>Wersja</span><span class="muted" id="app-version"></span></div>
+          <p>Liczone kraje: 193 państwa członkowskie ONZ oraz Watykan, Palestyna, Kosowo i Tajwan (razem 197). Terytoria zależne (np. Grenlandia, Portoryko) można zaznaczać osobno.</p>
+          <p class="muted small">Mapa: Natural Earth (domena publiczna). Miasta: GeoNames (CC BY 4.0).</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- PASEK KART -->
+    <nav class="tabbar" id="tabbar">
+      <button type="button" data-view="map" class="on">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg>
+        <span>Mapa</span>
+      </button>
+      <button type="button" data-view="list">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2" fill="currentColor"/><circle cx="4.5" cy="12" r="1.2" fill="currentColor"/><circle cx="4.5" cy="18" r="1.2" fill="currentColor"/></svg>
+        <span>Kraje</span>
+      </button>
+      <button type="button" data-view="stats">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>
+        <span>Statystyki</span>
+      </button>
+      <button type="button" data-view="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+        <span>Ustawienia</span>
+      </button>
+    </nav>
+
+    <!-- ARKUSZ KRAJU -->
+    <div id="backdrop" class="backdrop" hidden></div>
+    <div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-name" hidden>
+      <div class="sheet-grip" id="sheet-grip"><span></span></div>
+      <div class="sheet-head">
+        <div class="sheet-flag" id="sheet-flag"></div>
+        <div class="sheet-title">
+          <h2 id="sheet-name"></h2>
+          <div class="muted" id="sheet-sub"></div>
+        </div>
+        <button type="button" class="icon-btn" id="sheet-close" aria-label="Zamknij">✕</button>
+      </div>
+      <div class="sheet-body" id="sheet-body">
+        <div class="sheet-actions">
+          <button type="button" class="visit-btn" id="visit-btn"></button>
+          <button type="button" class="ghost-btn" id="show-on-map">Pokaż na mapie</button>
+        </div>
+        <div class="group-title">Odwiedzone miasta <span id="city-count" class="muted"></span></div>
+        <div class="card city-list" id="city-list"></div>
+        <div class="city-add">
+          <div class="search">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            <input id="city-input" type="search" placeholder="Dodaj miasto…" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
+          </div>
+          <div class="suggest" id="city-suggest"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
