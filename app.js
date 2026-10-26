@@ -1,7 +1,7 @@
 /* Mapa Podróży — aplikacja działająca w 100% offline (PWA). */
 "use strict";
 
-const VERSION = "1.3.3";
+const VERSION = "1.4.0";
 const STORE_KEY = "mapa-podrozy-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CONTINENTS = ["Europa", "Azja", "Afryka", "Ameryka Północna", "Ameryka Południowa", "Oceania"];
@@ -184,7 +184,7 @@ function maxW() {
   // Maksymalne oddalenie: cały świat mieści się w ekranie
   return Math.max(world.w, world.h * cw / ch) * 1.02;
 }
-function minW() { return world.w / 80; }
+function minW() { return world.w / 12000; } // pozwala przybliżyć do poziomu ulic
 
 function clampView(v) {
   let w = Math.min(maxW(), Math.max(minW(), v.w));
@@ -419,6 +419,15 @@ function minPopFor(unit) {
   return 0;
 }
 
+// Wyjątkowe miejsca (widoczne dopiero przy dużym przybliżeniu na Warszawę)
+const SPECIAL = [
+  { lat: 52.21376794623485, lon: 21.022417346943758, t: "Pierwsza randka 👉👈" },
+  { lat: 52.24646636403856, lon: 21.025760908093115, t: "Pierwsze trzymanie się za ręce 😁" },
+  { lat: 52.2207577660966, lon: 21.026280624026075, t: "Pierwszy pocałunek 🥰" },
+];
+const SPECIAL_MIN_UNIT = 250; // ok. 15 km szerokości ekranu
+const HEART_PATH = "M12 21.3 10.6 20C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.6 11.5L12 21.3Z";
+
 // Dwa tryby mapy:
 //  „world”  — kolory krajów, nazwy krajów, duże miasta jako małe czarne kropki (bez wyróżnień);
 //  „cities” — przygaszona mapa i tylko odwiedzone miasta (pinezki albo kolorowe kropki) z nazwami.
@@ -444,6 +453,37 @@ function renderOverlay() {
     else if (!overlaps(left, boxes)) { boxes.push(left); lbl += text(c.x - dx * inv, ty, c.n, cls, fs, "end"); }
   };
   const citiesMode = state.mapMode === "cities";
+
+  // 0. Wyjątkowe miejsca — tylko przy dużym przybliżeniu; ich napisy mają pierwszeństwo przed innymi
+  let special = "";
+  if (unit >= SPECIAL_MIN_UNIT) {
+    const placedS = [];
+    for (const p of SPECIAL) {
+      if (p.x == null) [p.x, p.y] = project(p.lon, p.lat);
+      if (inView(p.x, p.y)) placedS.push(p);
+    }
+    placedS.sort((a, b) => a.y - b.y);
+    const fs = 13, s = 26 / 24;
+    for (const p of placedS) {
+      const a = sx(p.x), b = sy(p.y);
+      boxes.push([a - 13, b - 24, a + 13, b]); // miejsce na serduszko
+      special += `<g transform="translate(${p.x} ${p.y}) scale(${inv * s}) translate(-12 -21.3)" class="sp-pin"><path d="${HEART_PATH}"/></g>`;
+    }
+    for (const p of placedS) {
+      const emoji = (p.t.match(/\p{Extended_Pictographic}/gu) || []).length;
+      const w = (p.t.length - emoji * 2) * fs * 0.56 + emoji * fs * 1.25 + 18, h = fs + 12;
+      const a = sx(p.x), b = sy(p.y);
+      // dymek nad serduszkiem, a gdy brak miejsca — pod, z prawej albo z lewej
+      const options = [[a - w / 2, b - 27 - h], [a - w / 2, b + 6], [a + 14, b - 12 - h / 2], [a - 14 - w, b - 12 - h / 2]];
+      const pos = options.map(([l, t]) => [l, t, l + w, t + h]).find((box) => !overlaps(box, boxes));
+      if (!pos) continue;
+      boxes.push(pos);
+      const X = vb.x + pos[0] * inv, Y = vb.y + pos[1] * inv;
+      special += `<rect x="${X}" y="${Y}" width="${w * inv}" height="${h * inv}" rx="${h / 2 * inv}" class="sp-bubble"/>` +
+        `<text x="${X + w / 2 * inv}" y="${Y + (h / 2 + fs * 0.36) * inv}" font-size="${fs * inv}" text-anchor="middle" class="sp-text">${esc(p.t)}</text>`;
+    }
+  }
+  $("#special").innerHTML = special;
 
   // 1. Nazwy krajów (najpierw największe)
   if (state.showLabels) {

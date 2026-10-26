@@ -83,6 +83,10 @@ input { font: inherit; color: inherit; }
 .lc { fill: var(--label-country); font-weight: 600; letter-spacing: .06em; }
 .lp { fill: var(--label-city); }
 .lp.v { fill: var(--city-v); font-weight: 600; }
+#special { pointer-events: none; }
+.sp-pin path { fill: #ff3d6e; stroke: #fff; stroke-width: 1.6; vector-effect: non-scaling-stroke; filter: drop-shadow(0 1px 2px rgba(150, 0, 50, .4)); }
+.sp-bubble { fill: #fff; stroke: #ff8fab; stroke-width: 1.2; vector-effect: non-scaling-stroke; filter: drop-shadow(0 2px 4px rgba(150, 0, 50, .25)); }
+.sp-text { fill: #c9184a; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 /* tryb „Miasta”: przygaszona mapa */
 [data-mode="cities"] #countries, [data-mode="cities"] #markers, [data-mode="cities"] .graticule { opacity: .5; }
 [data-mode="cities"] .lc { opacity: .45; }
