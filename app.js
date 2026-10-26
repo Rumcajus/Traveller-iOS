@@ -1,7 +1,7 @@
 /* Mapa Podróży — aplikacja działająca w 100% offline (PWA). */
 "use strict";
 
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const STORE_KEY = "mapa-podrozy-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CONTINENTS = ["Europa", "Azja", "Afryka", "Ameryka Północna", "Ameryka Południowa", "Oceania"];
@@ -21,7 +21,7 @@ const citiesCache = {};
 
 /* ================= Zapis danych ================= */
 function defaultState() {
-  return { visited: {}, cities: {}, color: COLORS[0], showCities: true, showGrid: true, showLabels: true, tipClosed: false };
+  return { visited: {}, cities: {}, color: COLORS[0], showCities: true, showGrid: true, showLabels: true, mapMode: "world", pinStyle: "pin", tipClosed: false };
 }
 function load() {
   try {
@@ -419,6 +419,9 @@ function minPopFor(unit) {
   return 0;
 }
 
+// Dwa tryby mapy:
+//  „world”  — kolory krajów, nazwy krajów, duże miasta jako małe czarne kropki (bez wyróżnień);
+//  „cities” — przygaszona mapa i tylko odwiedzone miasta (pinezki albo kolorowe kropki) z nazwami.
 function renderOverlay() {
   if (!vb) return;
   const gDots = $("#city-dots"), gLbl = $("#labels");
@@ -427,13 +430,20 @@ function renderOverlay() {
   const sx = (x) => (x - vb.x) * unit, sy = (y) => (y - vb.y) * unit;
   const inView = (x, y) => { const a = sx(x), b = sy(y); return a > -pad && a < cw + pad && b > -pad && b < ch + pad; };
   const boxes = [];
-  const free = (b) => {
-    for (const o of boxes) if (b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]) return false;
-    return true;
-  };
+  const overlaps = (b, list) => list.some((o) => b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]);
   let lbl = "", dots = "";
   const text = (x, y, t, cls, fs, anchor) =>
     `<text x="${x}" y="${y}" class="${cls}" font-size="${fs * inv}" stroke-width="${3 * inv}"${anchor ? ` text-anchor="${anchor}"` : ""}>${esc(t)}</text>`;
+  // nazwa miasta po prawej, a gdy brak miejsca — po lewej (dx: odstęp od punktu w px, dy: przesunięcie w pionie)
+  const cityName = (c, cls, fs, dx, dy) => {
+    const w = c.n.length * fs * 0.56 + 2, a = sx(c.x), b = sy(c.y) + dy;
+    const right = [a + dx, b - fs * 0.6, a + dx + w, b + fs * 0.6];
+    const left = [a - dx - w, b - fs * 0.6, a - dx, b + fs * 0.6];
+    const ty = c.y + (dy + fs * 0.35) * inv;
+    if (!overlaps(right, boxes)) { boxes.push(right); lbl += text(c.x + dx * inv, ty, c.n, cls, fs); }
+    else if (!overlaps(left, boxes)) { boxes.push(left); lbl += text(c.x - dx * inv, ty, c.n, cls, fs, "end"); }
+  };
+  const citiesMode = state.mapMode === "cities";
 
   // 1. Nazwy krajów (najpierw największe)
   if (state.showLabels) {
@@ -443,63 +453,65 @@ function renderOverlay() {
       const name = c.n.toUpperCase();
       const w = name.length * fs * 0.68 + 4, a = sx(x), b = sy(y);
       const box = [a - w / 2, b - fs * 0.7, a + w / 2, b + fs * 0.7];
-      if (!free(box)) continue;
-      boxes.push(box);
+      if (overlaps(box, boxes)) continue;
+      // w trybie miast nazwy krajów nie blokują miejsca nazwom miast
+      if (!citiesMode) boxes.push(box);
       lbl += text(x, y + fs * 0.35 * inv, name, "lc", fs, "middle");
     }
   }
 
-  // 2. Miasta: odwiedzone zawsze, pozostałe zależnie od przybliżenia (stolice mają pierwszeństwo)
-  if (state.showCities) {
-    const visitedKeys = new Map();
+  if (citiesMode) {
+    // 2a. Tylko odwiedzone miasta
+    const list = [];
     for (const id in state.cities) {
-      for (const c of state.cities[id]) if (c.lon != null) visitedKeys.set(id + "|" + norm(c.n), c);
+      for (const c of state.cities[id]) {
+        if (c.lon == null) continue;
+        const [x, y] = project(c.lon, c.lat);
+        if (inView(x, y)) list.push({ n: c.n, x, y });
+      }
     }
+    const pins = state.pinStyle !== "dot";
+    list.sort((a, b) => a.y - b.y); // południowe pinezki na wierzchu
+    for (const c of list) {
+      dots += pins
+        ? `<g transform="translate(${c.x} ${c.y}) scale(${inv})" class="pin"><path d="M0 0C-1.6-5-8-8.6-8-14.6a8 8 0 1 1 16 0C8-8.6 1.6-5 0 0Z"/><circle cy="-14.6" r="3"/></g>`
+        : `<circle cx="${c.x}" cy="${c.y}" r="${4.5 * inv}" class="vd"/>`;
+    }
+    // nazwy: gdy jest miejsce; przy pinezkach obok główki pinezki
+    for (const c of list.slice().reverse()) cityName(c, "lp v", 12, pins ? 10 : 7, pins ? -14.6 : 0);
+  } else if (state.showCities) {
+    // 2b. Duże miasta jako małe czarne kropki — więcej przy większym przybliżeniu
     const minPop = minPopFor(unit);
-    const cand = [];
-    for (const p of places) {
-      const v = visitedKeys.has(p.key);
-      if (!v && (!p.cap || unit < 0.6) && p.pop < minPop) continue;
+    const gap = unit < 1 ? 6 : unit < 3 ? 3 : 1;
+    const dotBoxes = [], placed = [];
+    for (const p of places) { // posortowane: stolice, potem wg liczby mieszkańców
+      if ((!p.cap || unit < 0.6) && p.pop < minPop) continue;
       if (!inView(p.x, p.y)) continue;
-      cand.push({ n: p.n, x: p.x, y: p.y, pop: p.pop, cap: p.cap, v });
-      if (v) visitedKeys.delete(p.key);
-    }
-    for (const c of visitedKeys.values()) { // własne miejsca i mniejsze miasta z listy użytkownika
-      const [x, y] = project(c.lon, c.lat);
-      if (inView(x, y)) cand.push({ n: c.n, x, y, pop: 0, cap: 0, v: true });
-    }
-    cand.sort((a, b) => b.v - a.v || b.cap - a.cap || b.pop - a.pop);
-
-    const showNames = unit >= 0.7;
-    const placed = [];
-    const dotBoxes = [];
-    for (const c of cand) {
-      const a = sx(c.x), b = sy(c.y), r = c.cap ? 4.5 : 3.5;
-      const gap = unit < 1 ? 7 : unit < 3 ? 4 : 1; // przy oddaleniu większe odstępy między kropkami
+      const a = sx(p.x), b = sy(p.y), r = 2;
       const db = [a - r - gap, b - r - gap, a + r + gap, b + r + gap];
-      // nienakładające się kropki; odwiedzone rysujemy zawsze
-      if (!c.v && dotBoxes.some((o) => db[0] < o[2] && db[2] > o[0] && db[1] < o[3] && db[3] > o[1])) continue;
+      if (overlaps(db, dotBoxes)) continue;
       dotBoxes.push(db);
-      placed.push(c);
-      dots += `<circle cx="${c.x}" cy="${c.y}" r="${r * inv}" class="pd${c.v ? " v" : ""}${c.cap ? " cap" : ""}"/>`;
+      placed.push(p);
+      dots += `<circle cx="${p.x}" cy="${p.y}" r="${r * inv}" class="bd"/>`;
     }
-    // 3. Nazwy miast — po prawej, a gdy brak miejsca, po lewej stronie kropki
-    if (showNames) {
-      for (const c of placed) {
-        const big = c.cap || c.v || c.pop >= 1e6;
-        if (!big && unit < 1.5) continue;
-        const fs = c.cap ? 12 : 11;
-        const w = c.n.length * fs * 0.56 + 2, a = sx(c.x), b = sy(c.y);
-        const right = [a + 6, b - fs * 0.6, a + 6 + w, b + fs * 0.6];
-        const left = [a - 6 - w, b - fs * 0.6, a - 6, b + fs * 0.6];
-        const cls = "lp" + (c.cap ? " cap" : "") + (c.v ? " v" : "");
-        if (free(right)) { boxes.push(right); lbl += text(c.x + 6 * inv, c.y + fs * 0.35 * inv, c.n, cls, fs); }
-        else if (free(left)) { boxes.push(left); lbl += text(c.x - 6 * inv, c.y + fs * 0.35 * inv, c.n, cls, fs, "end"); }
+    if (unit >= 0.7) {
+      for (const p of placed) {
+        if (!p.cap && p.pop < 1e6 && unit < 1.5) continue;
+        cityName(p, "lp", 11, 4, 0);
       }
     }
   }
   gDots.innerHTML = dots;
   gLbl.innerHTML = lbl;
+}
+
+function setMapMode(mode) {
+  state.mapMode = mode;
+  save();
+  document.body.dataset.mode = mode;
+  for (const b of $("#mode-switch").children) b.classList.toggle("on", b.dataset.mode === mode);
+  refreshCounters();
+  renderOverlay();
 }
 
 function selectCountry(id) {
@@ -579,6 +591,20 @@ function initUI() {
     if (b) showView(b.dataset.view);
   });
   $("#map-badge").addEventListener("click", () => showView("stats"));
+  $("#mode-switch").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-mode]");
+    if (b && b.dataset.mode !== state.mapMode) setMapMode(b.dataset.mode);
+  });
+  document.body.dataset.mode = state.mapMode;
+  for (const b of $("#mode-switch").children) b.classList.toggle("on", b.dataset.mode === state.mapMode);
+  $("#pin-style").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-p]");
+    if (!b) return;
+    state.pinStyle = b.dataset.p; save();
+    for (const x of $("#pin-style").children) x.classList.toggle("on", x === b);
+    renderOverlay();
+  });
+  for (const x of $("#pin-style").children) x.classList.toggle("on", x.dataset.p === state.pinStyle);
   $("#place-cancel").addEventListener("click", () => { const id = placing && placing.id; stopPlacing(); if (id) openSheet(id); });
   $("#install-close").addEventListener("click", () => { $("#install-tip").hidden = true; state.tipClosed = true; save(); });
 
@@ -627,7 +653,7 @@ function initUI() {
   $("#file-import").addEventListener("change", importData);
   $("#btn-reset").addEventListener("click", () => {
     if (!confirm("Na pewno usunąć wszystkie odwiedzone kraje i miasta? Tej operacji nie można cofnąć.")) return;
-    const keep = { color: state.color, showCities: state.showCities, showGrid: state.showGrid, showLabels: state.showLabels, tipClosed: state.tipClosed };
+    const keep = { color: state.color, showCities: state.showCities, showGrid: state.showGrid, showLabels: state.showLabels, mapMode: state.mapMode, pinStyle: state.pinStyle, tipClosed: state.tipClosed };
     state = Object.assign(defaultState(), keep);
     save();
     refreshAll();
@@ -747,8 +773,13 @@ function computeStats() {
 
 function refreshCounters() {
   const s = computeStats();
-  $("#badge-visited").textContent = s.visited;
+  // W trybie „Miasta” plakietka pokazuje liczbę odwiedzonych miast
+  const cm = state.mapMode === "cities";
+  $("#badge-visited").textContent = cm ? s.cities : s.visited;
+  $("#badge-of").hidden = cm;
+  $("#badge-pct").hidden = cm;
   $("#badge-pct").textContent = fmtPct(s.visited / s.total * 100);
+  $("#badge-label").textContent = cm ? plural(s.cities, "miasto", "miasta", "miast") : "krajów";
   if (currentView === "stats") renderStats();
   if (currentView === "list") renderList();
 }

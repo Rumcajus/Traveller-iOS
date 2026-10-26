@@ -31,10 +31,14 @@
         </svg>
       </div>
       <button id="map-badge" class="map-badge" type="button" aria-label="Pokaż statystyki">
-        <span class="badge-num"><b id="badge-visited">0</b><span>/<span id="badge-total">197</span></span></span>
-        <span class="badge-label">krajów</span>
+        <span class="badge-num"><b id="badge-visited">0</b><span id="badge-of">/<span id="badge-total">197</span></span></span>
+        <span class="badge-label" id="badge-label">krajów</span>
         <span class="badge-pct" id="badge-pct">0%</span>
       </button>
+      <div class="mode-switch" id="mode-switch" role="tablist" aria-label="Tryb mapy">
+        <button type="button" data-mode="world" class="on">Świat</button>
+        <button type="button" data-mode="cities">Miasta</button>
+      </div>
       <div class="zoom-ctrl">
         <button type="button" id="zoom-in" aria-label="Przybliż">+</button>
         <button type="button" id="zoom-out" aria-label="Oddal">−</button>
@@ -90,7 +94,7 @@
         <div class="group-title">Mapa</div>
         <div class="card">
           <label class="row switch-row">
-            <span>Pokazuj miasta i ich nazwy</span>
+            <span>Duże miasta w trybie Świat</span>
             <input type="checkbox" id="opt-cities" class="switch">
           </label>
           <label class="row switch-row">
@@ -103,11 +107,10 @@
           </label>
         </div>
 
-        <div class="legend">
-          <span><i class="lg-dot"></i>miasto</span>
-          <span><i class="lg-dot v"></i>odwiedzone</span>
-          <span><i class="lg-dot cap"></i>stolica</span>
-          <span><i class="lg-dot cap v"></i>odwiedzona stolica</span>
+        <div class="group-title">Odwiedzone miasta w trybie Miasta</div>
+        <div class="segmented seg-card" id="pin-style">
+          <button type="button" data-p="pin" class="on">Pinezki</button>
+          <button type="button" data-p="dot">Kropki</button>
         </div>
 
         <div class="group-title">Kopia zapasowa</div>

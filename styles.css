@@ -5,7 +5,6 @@
   --ocean: #cfe3ea;
   --grid: rgba(255, 255, 255, .45);
   --city-v: color-mix(in srgb, var(--visited) 55%, #0b1d2a);
-  --capital: #d62839;
   --halo: rgba(255, 250, 240, .85);
   --label-country: #6d5a3a;
   --label-city: #2b2b2b;
@@ -74,21 +73,24 @@ input { font: inherit; color: inherit; }
 .mk { fill: var(--land); stroke: #8a7b5d; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .mk.v { fill: var(--visited); stroke: #fff; }
 .mk.sel { stroke: var(--text); stroke-width: 2; }
-/* miasta: wypełnienie = odwiedzone, czerwona obwódka = stolica */
+/* warstwa miast i nazw */
 #city-dots, #labels { pointer-events: none; }
-.pd { fill: #fff; stroke: #6f6a60; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
-.pd.v { fill: var(--city-v); stroke: #fff; stroke-width: 1.5; }
-.pd.cap { stroke: var(--capital); stroke-width: 2.2; }
+.bd { fill: #1a1a1a; }
+.vd { fill: var(--visited); stroke: #fff; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.pin path { fill: var(--visited); stroke: #fff; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.pin circle { fill: #fff; }
 .lc, .lp { paint-order: stroke; stroke: var(--halo); stroke-linejoin: round; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 .lc { fill: var(--label-country); font-weight: 600; letter-spacing: .06em; }
 .lp { fill: var(--label-city); }
-.lp.cap { font-weight: 700; }
 .lp.v { fill: var(--city-v); font-weight: 600; }
-.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 10px 4px 0; font-size: 13px; color: var(--muted); }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
-.lg-dot { width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 1.5px solid #6f6a60; }
-.lg-dot.v { background: var(--city-v); border-color: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
-.lg-dot.cap { border: 2.5px solid var(--capital); width: 12px; height: 12px; }
+/* tryb „Miasta”: przygaszona mapa */
+[data-mode="cities"] #countries, [data-mode="cities"] #markers, [data-mode="cities"] .graticule { opacity: .5; }
+[data-mode="cities"] .lc { opacity: .45; }
+.mode-switch { position: absolute; right: 12px; top: calc(var(--sat) + 10px); display: flex; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 88%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: var(--shadow); }
+.mode-switch button { padding: 7px 14px; border-radius: 999px; font-size: 15px; font-weight: 600; color: var(--muted); }
+.mode-switch button.on { background: var(--visited); color: #fff; }
+.seg-card { margin-top: 0; background: var(--surface); border-radius: 14px; padding: 4px; }
+.segmented.seg-card button.on { background: var(--visited); color: #fff; box-shadow: none; }
 
 .map-badge {
   position: absolute; left: 12px; top: calc(var(--sat) + 10px);
