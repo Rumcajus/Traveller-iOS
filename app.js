@@ -1,7 +1,7 @@
 /* Mapa Podróży — aplikacja działająca w 100% offline (PWA). */
 "use strict";
 
-const VERSION = "1.3.2";
+const VERSION = "1.3.3";
 const STORE_KEY = "mapa-podrozy-v1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CONTINENTS = ["Europa", "Azja", "Afryka", "Ameryka Północna", "Ameryka Południowa", "Oceania"];
@@ -1069,7 +1069,8 @@ function showHearts() {
   }
   html += `<div class="big-heart"><svg viewBox="0 0 24 24"><defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1">` +
     `<stop offset="0" stop-color="#ff758f"/><stop offset="1" stop-color="#d00045"/></linearGradient></defs>` +
-    `<path d="${HEART}" fill="url(#hg)"/></svg><span>G+D</span></div>`;
+    `<path d="${HEART}" fill="url(#hg)"/></svg><span>G+D</span></div>` +
+    `<button type="button" class="hearts-close" aria-label="Zamknij">✕</button>`;
   box.innerHTML = html;
   document.body.appendChild(box);
   if (navigator.vibrate) navigator.vibrate([30, 60, 30]);
@@ -1077,8 +1078,8 @@ function showHearts() {
     box.classList.add("out");
     setTimeout(() => box.remove(), 500);
   };
-  box.addEventListener("click", close);
-  setTimeout(close, 7000);
+  // zamykanie tylko przyciskiem ✕ — przypadkowe stuknięcie w ekran nic nie robi
+  box.querySelector(".hearts-close").addEventListener("click", close);
 }
 
 init().catch((e) => {
